@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>質因數分解：雙人雷射大對決</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+  <!-- MathJax Configuration -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)'], ['$', '$']],
+        displayMath: [['\\[', '\\]']]
+      },
+      chtml: {
+        scale: 1.05
+      },
+      startup: {
+        typeset: false
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #0f172a;
+    }
+
+    /* 主遊戲容器：左右嚴格對半分 */
+    #game-board {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .player-half {
+      width: 50vw;
+      height: 100vh;
+      height: 100dvh;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #p1-half {
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #bfdbfe 100%);
+      border-right: 3px dashed #64748b;
+    }
+
+    #p2-half {
+      background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 50%, #fecdd3 100%);
+      border-left: 3px dashed #64748b;
+    }
+
+    /* 預設（觸屏/電腦正向模式）內部旋轉層 */
+    .rotatable-wrapper {
+      width: 50vw;
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1.25rem 1rem;
+      position: relative;
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* 平板面對面模式：寬高對調 (width: 100dvh, height: 50vw) 並旋轉 90度 / -90度 */
+    .mode-tablet #p1-wrapper {
+      width: 100vh;
+      width: 100dvh;
+      height: 50vw;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(90deg);
+      padding: 0.75rem 1.25rem;
+    }
+
+    .mode-tablet #p2-wrapper {
+      width: 100vh;
+      width: 100dvh;
+      height: 50vw;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-90deg);
+      padding: 0.75rem 1.25rem;
+    }
+
+    /* 手寫短除法白板 Canvas 樣式 */
+    .scratchpad-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 25;
+      pointer-events: none;
+    }
+    .scratchpad-overlay.drawing-active {
+      pointer-events: auto;
+      cursor: crosshair;
+      background-color: rgba(255, 255, 255, 0.25);
+    }
+
+    /* 答錯時迷思診斷與冷凍倒數覆蓋層 */
+    .diagnostic-modal {
+      position: absolute;
+      inset: 0.75rem;
+      z-index: 35;
+      background: rgba(15, 23, 42, 0.93);
+      backdrop-filter: blur(6px);
+      border-radius: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      color: #fff;
+      text-align: center;
+      animation: pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes pop-in {
+      0% { transform: scale(0.88); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* 小動物呼吸與受傷動畫 */
+    @keyframes float-idle {
+      0%, 100% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-7px) scale(1.05); }
+    }
+
+    .mascot-avatar {
+      display: inline-block;
+      animation: float-idle 2.4s ease-in-out infinite;
+      filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
+      transition: transform 0.15s;
+    }
+
+    @keyframes hit-shake {
+      0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+      20% { transform: translate(-12px, -6px) rotate(-14deg) scale(0.85); filter: brightness(1.6) saturate(2); }
+      40% { transform: translate(12px, 6px) rotate(14deg) scale(1.1); }
+      60% { transform: translate(-10px, 4px) rotate(-10deg) scale(0.9); }
+      80% { transform: translate(8px, -4px) rotate(8deg) scale(1.05); }
+    }
+
+    .mascot-hit {
+      animation: hit-shake 0.48s ease-in-out !important;
+    }
+
+    @keyframes attack-jump {
+      0%, 100% { transform: scale(1); }
+      40% { transform: scale(1.32) translateY(-8px); }
+    }
+
+    .mascot-attack {
+      animation: attack-jump 0.4s ease-out !important;
+    }
+
+    /* 全螢幕 0.5 秒內閃動三下特效 */
+    @keyframes screen-flash-3x {
+      0%, 100% { opacity: 0; }
+      10% { opacity: 0.88; }
+      28% { opacity: 0; }
+      46% { opacity: 0.88; }
+      64% { opacity: 0; }
+      82% { opacity: 0.88; }
+    }
+
+    #screen-flash-overlay {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle, #ffffff 30%, #fef08a 85%, #f97316 100%);
+      pointer-events: none;
+      opacity: 0;
+      z-index: 60;
+      mix-blend-mode: hard-light;
+    }
+
+    .trigger-flash-3x {
+      animation: screen-flash-3x 0.5s linear forwards;
+    }
+
+    /* 答錯時單邊閃紅與抖動 */
+    @keyframes wrong-shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+
+    .wrong-feedback {
+      animation: wrong-shake 0.38s ease-in-out;
+      box-shadow: inset 0 0 60px rgba(239, 68, 68, 0.55) !important;
+    }
+
+    /* 血量愛心扣血動畫 */
+    @keyframes heart-break {
+      0% { transform: scale(1.4); }
+      50% { transform: scale(0.6) rotate(-20deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    .heart-lost {
+      animation: heart-break 0.4s ease-out;
+      opacity: 0.35;
+      filter: grayscale(100%);
+    }
+
+    /* 花瓣雨特效 */
+    .petal-container {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 30;
+    }
+
+    @keyframes petal-fall {
+      0% {
+        transform: translateY(-30px) translateX(0px) rotate(0deg) scale(0.8);
+        opacity: 1;
+      }
+      50% {
+        transform: translateY(45vh) translateX(var(--sway-mid)) rotate(180deg) scale(1.05);
+        opacity: 0.95;
+      }
+      100% {
+        transform: translateY(95vh) translateX(var(--sway-end)) rotate(360deg) scale(0.85);
+        opacity: 0;
+      }
+    }
+
+    .petal {
+      position: absolute;
+      top: -24px;
+      pointer-events: none;
+      animation: petal-fall var(--fall-duration, 1.7s) ease-in forwards;
+      filter: drop-shadow(0 2px 4px rgba(244, 63, 94, 0.25));
+    }
+
+    /* 雷射光束動畫 */
+    @keyframes laser-pulse {
+      0% { stroke-width: 2; opacity: 1; }
+      35% { stroke-width: 22; opacity: 1; }
+      70% { stroke-width: 14; opacity: 0.9; }
+      100% { stroke-width: 0; opacity: 0; }
+    }
+
+    .laser-beam-core {
+      animation: laser-pulse 0.48s ease-out forwards;
+    }
+
+    /* 選項按鈕回饋 */
+    .option-btn {
+      transition: transform 0.1s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+    .option-btn:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+
+    /* 平板面對面模式下微調字體與間距以確保完美塞入 50vw 高度 */
+    .mode-tablet .mascot-emoji-size {
+      font-size: clamp(2.2rem, 4.5vw, 3.5rem);
+      line-height: 1.1;
+    }
+    .mode-tablet .question-box {
+      padding: 0.45rem 0.75rem;
+    }
+    .mode-tablet .option-btn {
+      padding: 0.4rem 0.5rem;
+      min-height: 3.1rem;
+    }
+  </style>
+</head>
+<body class="select-none">
+
+  <!-- 全螢幕 0.5 秒閃 3 下特效層 -->
+  <div id="screen-flash-overlay"></div>
+
+  <!-- 跨螢幕雷射光束 SVG 圖層 -->
+  <svg id="laser-svg" class="fixed inset-0 w-full h-full pointer-events-none z-50" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="laser-glow" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="6" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+    <g id="laser-group"></g>
+  </svg>
+
+  <!-- 頂部/中央浮動控制鈕 -->
+  <div class="fixed top-2 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700">
+    <button id="btn-open-settings" class="text-xs sm:text-sm font-bold text-white hover:text-amber-300 px-2 py-0.5 rounded transition flex items-center gap-1">
+      <span>⚙️</span> <span>設定 / 重來</span>
+    </button>
+    <span class="text-slate-500">|</span>
+    <span id="current-mode-badge" class="text-xs font-bold text-emerald-300 px-1">簡單・觸屏</span>
+    <span class="text-slate-500">|</span>
+    <button id="btn-toggle-fullscreen" class="text-xs sm:text-sm font-bold text-amber-300 hover:text-amber-200 px-1.5 py-0.5 rounded transition flex items-center gap-1" title="切換全螢幕">
+      <span>⛶</span> <span class="hidden sm:inline">全螢幕</span>
+    </button>
+    <span class="text-slate-500">|</span>
+    <button id="btn-toggle-sound" class="text-xs sm:text-sm font-bold text-sky-300 hover:text-sky-200 px-1.5 py-0.5 rounded transition" title="切換音效">
+      🔊
+    </button>
+  </div>
+
+  <!-- 脫離全螢幕時的自動提醒與一鍵恢復橫幅 -->
+  <div id="fullscreen-restore-banner" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 hidden items-center gap-3 bg-indigo-950/95 text-white px-5 py-2.5 rounded-full shadow-2xl border-2 border-amber-400 animate-bounce cursor-pointer">
+    <span class="text-xl">⛶</span>
+    <span class="text-xs sm:text-sm font-black tracking-wide">偵測到已退出全螢幕！點擊此處或畫面即可恢復全螢幕最佳對戰視野</span>
+  </div>
+
+  <!-- 雙人對戰主畫面 -->
+  <main id="game-board">
+    <!-- 左方：玩家 1 (藍色系) -->
+    <section id="p1-half" class="player-half">
+      <div id="p1-wrapper" class="rotatable-wrapper">
+        <!-- 花瓣雨容器 (限於玩家 1 畫面內) -->
+        <div id="p1-petals" class="petal-container"></div>
+
+        <!-- 手寫短除法白板圖層 -->
+        <canvas id="p1-scratchpad" class="scratchpad-overlay"></canvas>
+
+        <!-- 答錯時「迷思概念即時診斷」與防亂按冷卻彈窗 -->
+        <div id="p1-diagnostic" class="diagnostic-modal hidden border-2 border-rose-400 shadow-2xl">
+          <div class="text-3xl mb-1">🛑 迷思概念診斷</div>
+          <div id="p1-diag-reason" class="text-sm sm:text-base font-extrabold text-amber-300 mb-2 px-2">
+            注意！選項中還有合數尚未分解完喔！
+          </div>
+          <div class="bg-slate-800/90 border border-slate-600 rounded-xl p-2.5 w-full max-w-xs mb-3 text-xs sm:text-sm text-slate-200">
+            <div class="text-slate-400 font-bold mb-1">💡 短除法分解步驟：</div>
+            <div id="p1-diag-steps" class="font-mono text-emerald-300 font-bold leading-relaxed"></div>
+          </div>
+          <div class="w-full max-w-xs bg-slate-700 h-2.5 rounded-full overflow-hidden mb-1">
+            <div id="p1-penalty-bar" class="bg-rose-500 h-full w-full transition-all duration-100"></div>
+          </div>
+          <span id="p1-penalty-text" class="text-xs font-bold text-rose-300">冷卻思考中... (2.5秒)</span>
+        </div>
+
+        <!-- 頂部：玩家名稱與 7 滴血 -->
+        <div class="flex flex-col items-center gap-1 z-30 mt-5 sm:mt-4">
+          <div class="flex items-center justify-between w-full max-w-md px-2">
+            <span class="bg-blue-600 text-white text-xs sm:text-sm font-black px-3 py-1 rounded-full shadow">
+              PLAYER 1 (藍方)
+            </span>
+            <div class="flex items-center gap-1.5">
+              <span id="p1-combo-badge" class="hidden text-xs font-black text-amber-900 bg-amber-300 px-2 py-0.5 rounded-full animate-pulse">
+                🔥 連對 0
+              </span>
+              <span id="p1-score-badge" class="text-xs sm:text-sm font-bold text-blue-800 bg-blue-100 border border-blue-300 px-2.5 py-0.5 rounded-full">
+                擊中：0 次
+              </span>
+            </div>
+          </div>
+          <!-- 7 顆愛心血量條 -->
+          <div id="p1-hearts" class="flex items-center justify-center gap-1 sm:gap-1.5 bg-white/80 backdrop-blur px-3 py-1.5 rounded-2xl shadow-sm border border-blue-200 text-lg sm:text-2xl">
+            <!-- JS 動態生成 7 顆 ❤️ -->
+          </div>
+        </div>
+
+        <!-- 中上：隨機小動物區 -->
+        <div class="flex flex-col items-center justify-center my-0.5 z-10">
+          <div id="p1-mascot-box" class="relative flex flex-col items-center">
+            <div id="p1-mascot-emoji" class="mascot-avatar mascot-emoji-size text-5xl sm:text-6xl md:text-7xl select-none">
+              🦁
+            </div>
+            <span id="p1-mascot-name" class="mt-0.5 text-xs sm:text-sm font-extrabold text-blue-900 bg-blue-200/90 px-3 py-0.5 rounded-full shadow-sm">
+              雷霆獅王
+            </span>
+          </div>
+        </div>
+
+        <!-- 中間：題目顯示區 + 學習鷹架工具列 (提示 & 手寫白板) -->
+        <div class="question-box bg-white/95 backdrop-blur border-2 border-blue-400 rounded-2xl p-2.5 sm:p-3.5 shadow-md text-center max-w-md w-full mx-auto z-30">
+          <div class="flex items-center justify-between gap-1 mb-1">
+            <span class="text-xs font-bold text-slate-500">選出「標準分解式」：</span>
+            <div class="flex items-center gap-1">
+              <button type="button" id="p1-btn-hint" class="text-xs font-extrabold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-lg transition">
+                💡 質因數提示
+              </button>
+              <button type="button" id="p1-btn-draw" class="text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2 py-0.5 rounded-lg transition">
+                ✏️ 手寫短除法
+              </button>
+              <button type="button" id="p1-btn-clear" class="hidden text-xs font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-lg">
+                清除
+              </button>
+            </div>
+          </div>
+          <div id="p1-question-math" class="text-2xl sm:text-3xl md:text-4xl font-black text-blue-950 min-h-[2.2rem] flex items-center justify-center">
+            \( 72 \)
+          </div>
+          <!-- 漸進式鷹架提示顯示列 -->
+          <div id="p1-hint-box" class="hidden mt-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg py-1 px-2">
+          </div>
+        </div>
+
+        <!-- 下方：四選一按鈕區 (2x2 Grid) -->
+        <div id="p1-options" class="grid grid-cols-2 gap-2 sm:gap-2.5 w-full max-w-md mx-auto z-30 mb-1">
+          <button data-idx="0" class="option-btn bg-white hover:bg-blue-50 active:bg-blue-100 border-2 border-blue-300 hover:border-blue-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option A
+          </button>
+          <button data-idx="1" class="option-btn bg-white hover:bg-blue-50 active:bg-blue-100 border-2 border-blue-300 hover:border-blue-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option B
+          </button>
+          <button data-idx="2" class="option-btn bg-white hover:bg-blue-50 active:bg-blue-100 border-2 border-blue-300 hover:border-blue-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option C
+          </button>
+          <button data-idx="3" class="option-btn bg-white hover:bg-blue-50 active:bg-blue-100 border-2 border-blue-300 hover:border-blue-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option D
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右方：玩家 2 (橘紅色系) -->
+    <section id="p2-half" class="player-half">
+      <div id="p2-wrapper" class="rotatable-wrapper">
+        <!-- 花瓣雨容器 (限於玩家 2 畫面內) -->
+        <div id="p2-petals" class="petal-container"></div>
+
+        <!-- 手寫短除法白板圖層 -->
+        <canvas id="p2-scratchpad" class="scratchpad-overlay"></canvas>
+
+        <!-- 答錯時「迷思概念即時診斷」與防亂按冷卻彈窗 -->
+        <div id="p2-diagnostic" class="diagnostic-modal hidden border-2 border-rose-400 shadow-2xl">
+          <div class="text-3xl mb-1">🛑 迷思概念診斷</div>
+          <div id="p2-diag-reason" class="text-sm sm:text-base font-extrabold text-amber-300 mb-2 px-2">
+            注意！選項中還有合數尚未分解完喔！
+          </div>
+          <div class="bg-slate-800/90 border border-slate-600 rounded-xl p-2.5 w-full max-w-xs mb-3 text-xs sm:text-sm text-slate-200">
+            <div class="text-slate-400 font-bold mb-1">💡 短除法分解步驟：</div>
+            <div id="p2-diag-steps" class="font-mono text-emerald-300 font-bold leading-relaxed"></div>
+          </div>
+          <div class="w-full max-w-xs bg-slate-700 h-2.5 rounded-full overflow-hidden mb-1">
+            <div id="p2-penalty-bar" class="bg-rose-500 h-full w-full transition-all duration-100"></div>
+          </div>
+          <span id="p2-penalty-text" class="text-xs font-bold text-rose-300">冷卻思考中... (2.5秒)</span>
+        </div>
+
+        <!-- 頂部：玩家名稱與 7 滴血 -->
+        <div class="flex flex-col items-center gap-1 z-30 mt-5 sm:mt-4">
+          <div class="flex items-center justify-between w-full max-w-md px-2">
+            <span class="bg-rose-600 text-white text-xs sm:text-sm font-black px-3 py-1 rounded-full shadow">
+              PLAYER 2 (紅方)
+            </span>
+            <div class="flex items-center gap-1.5">
+              <span id="p2-combo-badge" class="hidden text-xs font-black text-amber-900 bg-amber-300 px-2 py-0.5 rounded-full animate-pulse">
+                🔥 連對 0
+              </span>
+              <span id="p2-score-badge" class="text-xs sm:text-sm font-bold text-rose-800 bg-rose-100 border border-rose-300 px-2.5 py-0.5 rounded-full">
+                擊中：0 次
+              </span>
+            </div>
+          </div>
+          <!-- 7 顆愛心血量條 -->
+          <div id="p2-hearts" class="flex items-center justify-center gap-1 sm:gap-1.5 bg-white/80 backdrop-blur px-3 py-1.5 rounded-2xl shadow-sm border border-rose-200 text-lg sm:text-2xl">
+            <!-- JS 動態生成 7 顆 ❤️ -->
+          </div>
+        </div>
+
+        <!-- 中上：隨機小動物區 -->
+        <div class="flex flex-col items-center justify-center my-0.5 z-10">
+          <div id="p2-mascot-box" class="relative flex flex-col items-center">
+            <div id="p2-mascot-emoji" class="mascot-avatar mascot-emoji-size text-5xl sm:text-6xl md:text-7xl select-none">
+              🐼
+            </div>
+            <span id="p2-mascot-name" class="mt-0.5 text-xs sm:text-sm font-extrabold text-rose-900 bg-rose-200/90 px-3 py-0.5 rounded-full shadow-sm">
+              功夫熊貓
+            </span>
+          </div>
+        </div>
+
+        <!-- 中間：題目顯示區 + 學習鷹架工具列 (提示 & 手寫白板) -->
+        <div class="question-box bg-white/95 backdrop-blur border-2 border-rose-400 rounded-2xl p-2.5 sm:p-3.5 shadow-md text-center max-w-md w-full mx-auto z-30">
+          <div class="flex items-center justify-between gap-1 mb-1">
+            <span class="text-xs font-bold text-slate-500">選出「標準分解式」：</span>
+            <div class="flex items-center gap-1">
+              <button type="button" id="p2-btn-hint" class="text-xs font-extrabold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-lg transition">
+                💡 質因數提示
+              </button>
+              <button type="button" id="p2-btn-draw" class="text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2 py-0.5 rounded-lg transition">
+                ✏️ 手寫短除法
+              </button>
+              <button type="button" id="p2-btn-clear" class="hidden text-xs font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-lg">
+                清除
+              </button>
+            </div>
+          </div>
+          <div id="p2-question-math" class="text-2xl sm:text-3xl md:text-4xl font-black text-rose-950 min-h-[2.2rem] flex items-center justify-center">
+            \( 90 \)
+          </div>
+          <!-- 漸進式鷹架提示顯示列 -->
+          <div id="p2-hint-box" class="hidden mt-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg py-1 px-2">
+          </div>
+        </div>
+
+        <!-- 下方：四選一按鈕區 (2x2 Grid) -->
+        <div id="p2-options" class="grid grid-cols-2 gap-2 sm:gap-2.5 w-full max-w-md mx-auto z-30 mb-1">
+          <button data-idx="0" class="option-btn bg-white hover:bg-rose-50 active:bg-rose-100 border-2 border-rose-300 hover:border-rose-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option A
+          </button>
+          <button data-idx="1" class="option-btn bg-white hover:bg-rose-50 active:bg-rose-100 border-2 border-rose-300 hover:border-rose-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option B
+          </button>
+          <button data-idx="2" class="option-btn bg-white hover:bg-rose-50 active:bg-rose-100 border-2 border-rose-300 hover:border-rose-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option D
+          </button>
+          <button data-idx="3" class="option-btn bg-white hover:bg-rose-50 active:bg-rose-100 border-2 border-rose-300 hover:border-rose-500 rounded-xl p-2.5 sm:p-3.5 shadow-sm flex items-center justify-center text-slate-800 font-bold text-base sm:text-lg md:text-xl min-h-[3.6rem]">
+            Option D
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 遊戲設定與開始選單 Modal -->
+  <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border-4 border-indigo-500 text-center animate-fade-in">
+      <div class="inline-flex items-center justify-center gap-3 text-4xl sm:text-5xl mb-2">
+        <span>⚡</span><span>🦁</span><span>🆚</span><span>🐲</span><span>⚡</span>
+      </div>
+      <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+        質因數分解：雙人雷射大對決
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-600 mt-1 mb-5">
+        國中數學標準分解式競速！答對發射雷射扣對手 1 滴血，答錯扣自己 1 滴血！
+      </p>
+
+      <!-- 難度選擇 -->
+      <div class="mb-5 text-left">
+        <label class="block text-sm font-extrabold text-slate-700 mb-2">
+          1️⃣ 選擇題目難度：
+        </label>
+        <div class="grid grid-cols-3 gap-2.5" id="difficulty-selector">
+          <button type="button" data-diff="easy" class="diff-btn py-3 px-2 rounded-2xl border-2 border-indigo-600 bg-indigo-50 text-indigo-900 font-black text-sm sm:text-base shadow-sm transition">
+            🌱 簡單<br>
+            <span class="text-xs font-normal text-slate-600">20 ~ 100</span>
+          </button>
+          <button type="button" data-diff="medium" class="diff-btn py-3 px-2 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm sm:text-base hover:bg-slate-50 transition">
+            🔥 中等<br>
+            <span class="text-xs font-normal text-slate-500">100 ~ 400</span>
+          </button>
+          <button type="button" data-diff="hard" class="diff-btn py-3 px-2 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm sm:text-base hover:bg-slate-50 transition">
+            👑 困難<br>
+            <span class="text-xs font-normal text-slate-500">400 ~ 1500</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 裝置顯示模式選擇 -->
+      <div class="mb-6 text-left">
+        <label class="block text-sm font-extrabold text-slate-700 mb-2">
+          2️⃣ 選擇遊玩裝置模式：
+        </label>
+        <div class="grid grid-cols-2 gap-3" id="device-selector">
+          <button type="button" data-device="touchscreen" class="device-btn p-3 rounded-2xl border-2 border-indigo-600 bg-indigo-50 text-indigo-900 font-black text-sm sm:text-base shadow-sm transition flex flex-col items-center">
+            <span class="text-2xl mb-1">🖥️</span>
+            <span>觸屏 / 電腦模式</span>
+            <span class="text-xs font-normal text-slate-600 mt-0.5">左右並排正向顯示</span>
+          </button>
+          <button type="button" data-device="tablet" class="device-btn p-3 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm sm:text-base hover:bg-slate-50 transition flex flex-col items-center">
+            <span class="text-2xl mb-1">📱</span>
+            <span>平板對戰模式</span>
+            <span class="text-xs font-normal text-slate-500 mt-0.5">左順時鐘90° / 右逆時鐘90°</span>
+          </button>
+        </div>
+      </div>
+
+      <button id="btn-start-game" class="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-rose-600 hover:from-indigo-500 hover:to-rose-500 text-white font-black text-xl shadow-lg transform active:scale-95 transition">
+        🚀 開始雙人對戰！
+      </button>
+    </div>
+  </div>
+
+  <!-- 遊戲結束勝利結算 Modal -->
+  <div id="gameover-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border-4 border-amber-400 text-center">
+      <div id="winner-emoji" class="text-7xl sm:text-8xl mb-2 animate-bounce">
+        🦁
+      </div>
+      <div class="inline-block bg-amber-100 text-amber-800 font-extrabold text-xs sm:text-sm px-3 py-1 rounded-full mb-2">
+        🏆 VICTORY 🏆
+      </div>
+      <h2 id="winner-title" class="text-2xl sm:text-3xl font-black text-slate-900 mb-2">
+        🎉 恭喜 玩家 1 獲勝！ 🎉
+      </h2>
+      <p id="winner-subtitle" class="text-sm text-slate-600 mb-5">
+        成功將對手的小動物血量歸零！
+      </p>
+
+      <!-- 對戰數據統計 -->
+      <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 mb-6 text-sm">
+        <div class="bg-blue-50 p-2.5 rounded-xl border border-blue-200">
+          <div class="font-black text-blue-900">PLAYER 1 (藍方)</div>
+          <div id="stat-p1" class="text-xs text-blue-700 mt-1 font-bold">答對 0 題 / 答錯 0 題</div>
+        </div>
+        <div class="bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+          <div class="font-black text-rose-900">PLAYER 2 (紅方)</div>
+          <div id="stat-p2" class="text-xs text-rose-700 mt-1 font-bold">答對 0 題 / 答錯 0 題</div>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="btn-play-again" class="flex-1 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base shadow-md active:scale-95 transition">
+          🔄 再玩一局
+        </button>
+        <button id="btn-change-settings" class="flex-1 py-3.5 rounded-2xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-base active:scale-95 transition">
+          ⚙️ 更換設定
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**************************************************************
+     * 1. Web Audio API 合成音效引擎 (免外部音檔)
+     **************************************************************/
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // 歡欣慶祝音效 + 雷射發射音效
+      playCorrectAndLaser() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+
+        // A. 歡欣上揚琶音 (C5 - E5 - G5 - C6)
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.065);
+
+          gain.gain.setValueAtTime(0.001, now + idx * 0.065);
+          gain.gain.linearRampToValueAtTime(0.22, now + idx * 0.065 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.065 + 0.28);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.065);
+          osc.stop(now + idx * 0.065 + 0.3);
+        });
+
+        // B. 雷射光束啾聲 (高頻快速滑落)
+        const laserOsc = this.ctx.createOscillator();
+        const laserGain = this.ctx.createGain();
+        laserOsc.type = 'sawtooth';
+        laserOsc.frequency.setValueAtTime(1400, now);
+        laserOsc.frequency.exponentialRampToValueAtTime(180, now + 0.32);
+
+        laserGain.gain.setValueAtTime(0.18, now);
+        laserGain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+
+        laserOsc.connect(laserGain);
+        laserGain.connect(this.ctx.destination);
+        laserOsc.start(now);
+        laserOsc.stop(now + 0.35);
+      }
+
+      // 答錯扣血低沉音效
+      playWrong() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(165, now);
+        osc.frequency.setValueAtTime(130, now + 0.14);
+
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.38);
+      }
+
+      // 勝利號角音效
+      playVictory() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const melody = [
+          { f: 523.25, t: 0, d: 0.14 },
+          { f: 523.25, t: 0.15, d: 0.14 },
+          { f: 523.25, t: 0.30, d: 0.14 },
+          { f: 659.25, t: 0.45, d: 0.32 },
+          { f: 587.33, t: 0.80, d: 0.25 },
+          { f: 659.25, t: 1.08, d: 0.22 },
+          { f: 783.99, t: 1.32, d: 0.65 }
+        ];
+
+        melody.forEach(n => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(n.f, now + n.t);
+
+          gain.gain.setValueAtTime(0.25, now + n.t);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + n.t);
+          osc.stop(now + n.t + n.d + 0.02);
+        });
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /**************************************************************
+     * 2. 小動物角色池與亂數質因數分解題庫產生器
+     **************************************************************/
+    const MASCOT_POOL = [
+      { emoji: '🦁', name: '雷霆獅王' },
+      { emoji: '🐯', name: '烈焰猛虎' },
+      { emoji: '🐼', name: '功夫熊貓' },
+      { emoji: '🦊', name: '幻影九尾狐' },
+      { emoji: '🐸', name: '閃電忍蛙' },
+      { emoji: '🐨', name: '星光無尾熊' },
+      { emoji: '🦄', name: '彩虹獨角獸' },
+      { emoji: '🐲', name: '蒼穹飛龍' },
+      { emoji: '🐧', name: '極地企鵝' },
+      { emoji: '🐹', name: '黃金倉鼠' },
+      { emoji: '🐰', name: '月光玉兔' },
+      { emoji: '🦉', name: '智慧貓頭鷹' }
+    ];
+
+    // 將任意正整數分解為 { prime: exponent } 物件，回傳排序後的陣列 [[p, e], ...]
+    function factorizeNumber(n) {
+      const factors = [];
+      let temp = n;
+      for (let d = 2; d * d <= temp; d++) {
+        if (temp % d === 0) {
+          let count = 0;
+          while (temp % d === 0) {
+            count++;
+            temp = Math.floor(temp / d);
+          }
+          factors.push([d, count]);
+        }
+      }
+      if (temp > 1) {
+        factors.push([temp, 1]);
+      }
+      return factors;
+    }
+
+    // 將 [[base, exp], ...] 格式化為 LaTeX 字串，如 "2^{3} \times 3^{2} \times 5"
+    function formatFactorsToLatex(factorsArr) {
+      return factorsArr
+        .filter(item => item[1] > 0)
+        .map(([base, exp]) => (exp === 1 ? `${base}` : `${base}^{${exp}}`))
+        .join(' \\times ');
+    }
+
+    // 根據難度產生一個合數題目 N
+    function generateTargetNumber(difficulty) {
+      const allowedPrimes = {
+        easy: [2, 3, 5, 7],
+        medium: [2, 3, 5, 7, 11, 13],
+        hard: [2, 3, 5, 7, 11, 13, 17, 19]
+      }[difficulty] || [2, 3, 5, 7];
+
+      const range = {
+        easy: [20, 100],
+        medium: [100, 400],
+        hard: [400, 1500]
+      }[difficulty] || [20, 100];
+
+      const candidates = [];
+      for (let num = range[0]; num <= range[1]; num++) {
+        const pf = factorizeNumber(num);
+        // 必須是合數 (質因數總次方和 >= 2，且為提高國中練習價值，優先挑選總質因數個數 >= 3 的合數)
+        const totalPrimeCount = pf.reduce((acc, cur) => acc + cur[1], 0);
+        const allAllowed = pf.every(([p]) => allowedPrimes.includes(p));
+        if (allAllowed && totalPrimeCount >= 3) {
+          candidates.push(num);
+        }
+      }
+
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)] || 72;
+      return chosen;
+    }
+
+    // 生成短除法連續除法步驟字串，幫助學生理解分解過程
+    function buildDivisionStepsText(n, factors) {
+      let current = n;
+      const steps = [];
+      factors.forEach(([p, exp]) => {
+        for (let i = 0; i < exp; i++) {
+          const next = current / p;
+          steps.push(`${current} ÷ ${p} = ${next}`);
+          current = next;
+        }
+      });
+      return steps.join(' → ');
+    }
+
+    // 針對學生誤選的錯誤選項，診斷其背後的國中數學迷思概念
+    function diagnoseWrongOption(N, trueFactors, chosenLatex) {
+      // 檢查是否含有未分解的合數 (4, 6, 8, 9)
+      if (/(^|\s)(4|6|8|9)(\^|\s|$)/.test(chosenLatex)) {
+        return `⚠️ 你選的式子裡含有「合數 (4、6 或 9)」，標準分解式的底數必須全部都是「質數」喔！`;
+      }
+      // 計算學生所選答案實際乘開的數值
+      const parts = chosenLatex.split('\\times').map(s => s.trim());
+      let product = 1;
+      for (const part of parts) {
+        const match = part.match(/^(\d+)(?:\^\{(\d+)\})?$/);
+        if (match) {
+          const base = parseInt(match[1], 10);
+          const exp = match[2] ? parseInt(match[2], 10) : 1;
+          product *= Math.pow(base, exp);
+        }
+      }
+      if (product !== N) {
+        const primeSummary = trueFactors.map(([p, e]) => `${e} 個 ${p}`).join('、');
+        return `⚠️ 次方或質因數算錯囉！你選的式子乘開是 ${product}，但題目 ${N} 其實是由「${primeSummary}」相乘而成。`;
+      }
+      return `⚠️ 請確認質因數是否由小到大排列，且每個底數都是質數喔！`;
+    }
+
+    // 產生漸進式解題提示（判別法鷹架）
+    function generateScaffoldHint(N, trueFactors) {
+      const hints = [];
+      if (N % 2 === 0) hints.push(`個位數是偶數，可先除以質數 2`);
+      if (N % 5 === 0) hints.push(`個位數是 0 或 5，可除以質數 5`);
+      const digitSum = String(N).split('').reduce((a, b) => a + Number(b), 0);
+      if (N % 3 === 0) hints.push(`各位數字和 (${digitSum}) 是 3 的倍數，可除以 3`);
+      const distinctPrimes = trueFactors.map(f => f[0]).join(', ');
+      return `🔍 提示：${hints.slice(0, 2).join('；')}（包含質因數：${distinctPrimes}）`;
+    }
+
+    // 針對目標數 N 生成 1 個正確答案 + 3 個具教育意義的不重複誘答選項 (LaTeX)
+    function createQuestionObject(difficulty, excludeNumber = null) {
+      let N = generateTargetNumber(difficulty);
+      if (excludeNumber && N === excludeNumber) {
+        N = generateTargetNumber(difficulty);
+      }
+
+      const trueFactors = factorizeNumber(N);
+      const correctLatex = formatFactorsToLatex(trueFactors);
+      const distractorSet = new Set();
+
+      // 策略 1：微調某個質因數的次方 (+1 或 -1)
+      for (let i = 0; i < trueFactors.length; i++) {
+        const copyPlus = trueFactors.map(f => [...f]);
+        copyPlus[i][1] += 1;
+        distractorSet.add(formatFactorsToLatex(copyPlus));
+
+        if (trueFactors[i][1] > 1) {
+          const copyMinus = trueFactors.map(f => [...f]);
+          copyMinus[i][1] -= 1;
+          distractorSet.add(formatFactorsToLatex(copyMinus));
+        }
+      }
+
+      // 策略 2：若含有兩個以上不同質因數，將其中兩個質因數的次方對調或平移
+      if (trueFactors.length >= 2) {
+        const swapped = trueFactors.map(f => [...f]);
+        if (swapped[0][1] !== swapped[1][1]) {
+          const tmp = swapped[0][1];
+          swapped[0][1] = swapped[1][1];
+          swapped[1][1] = tmp;
+          distractorSet.add(formatFactorsToLatex(swapped));
+        } else {
+          swapped[0][1] = Math.max(1, swapped[0][1] - 1);
+          swapped[1][1] += 1;
+          distractorSet.add(formatFactorsToLatex(swapped));
+        }
+      }
+
+      // 策略 3：未完全分解（混入合數 4, 6, 8, 9，國中生最常犯的錯誤）
+      const mapObj = Object.fromEntries(trueFactors);
+      if (mapObj[2] >= 2) {
+        // 把 2^2 變成 4
+        const fake = [];
+        const rem2 = mapObj[2] - 2;
+        if (rem2 > 0) fake.push([2, rem2]);
+        fake.push([4, 1]);
+        trueFactors.forEach(([p, e]) => {
+          if (p !== 2) fake.push([p, e]);
+        });
+        fake.sort((a, b) => a[0] - b[0]);
+        distractorSet.add(formatFactorsToLatex(fake));
+      }
+      if (mapObj[2] >= 1 && mapObj[3] >= 1) {
+        // 把 2 * 3 合併成 6
+        const fake = [];
+        if (mapObj[2] - 1 > 0) fake.push([2, mapObj[2] - 1]);
+        if (mapObj[3] - 1 > 0) fake.push([3, mapObj[3] - 1]);
+        fake.push([6, 1]);
+        trueFactors.forEach(([p, e]) => {
+          if (p !== 2 && p !== 3) fake.push([p, e]);
+        });
+        fake.sort((a, b) => a[0] - b[0]);
+        distractorSet.add(formatFactorsToLatex(fake));
+      }
+      if (mapObj[3] >= 2) {
+        // 把 3^2 變成 9
+        const fake = [];
+        trueFactors.forEach(([p, e]) => {
+          if (p === 3) {
+            if (e - 2 > 0) fake.push([3, e - 2]);
+            fake.push([9, 1]);
+          } else {
+            fake.push([p, e]);
+          }
+        });
+        fake.sort((a, b) => a[0] - b[0]);
+        distractorSet.add(formatFactorsToLatex(fake));
+      }
+
+      // 策略 4：鄰近質數替換（保底補足 3 個錯誤選項）
+      const primeList = [2, 3, 5, 7, 11, 13, 17, 19, 23];
+      let safetyCounter = 0;
+      while (distractorSet.size < 4 && safetyCounter < 15) {
+        safetyCounter++;
+        const mutated = trueFactors.map(f => [...f]);
+        const targetIdx = Math.floor(Math.random() * mutated.length);
+        const currentPrime = mutated[targetIdx][0];
+        const pIndex = primeList.indexOf(currentPrime);
+        const replacementPrime = primeList[(pIndex + safetyCounter) % primeList.length];
+
+        if (!mutated.some(([p]) => p === replacementPrime)) {
+          mutated[targetIdx][0] = replacementPrime;
+          mutated.sort((a, b) => a[0] - b[0]);
+          distractorSet.add(formatFactorsToLatex(mutated));
+        } else {
+          mutated[targetIdx][1] += (safetyCounter % 2 === 0 ? 1 : 2);
+          distractorSet.add(formatFactorsToLatex(mutated));
+        }
+      }
+
+      distractorSet.delete(correctLatex);
+      const distractors = Array.from(distractorSet);
+
+      // 隨機挑選 3 個誘答選項
+      for (let i = distractors.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [distractors[i], distractors[j]] = [distractors[j], distractors[i]];
+      }
+
+      const selectedDistractors = distractors.slice(0, 3);
+      const allOptions = [correctLatex, ...selectedDistractors];
+
+      // 打亂 4 個選項順序
+      for (let i = allOptions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allOptions[i], allOptions[j]] = [allOptions[j], allOptions[i]];
+      }
+
+      return {
+        number: N,
+        trueFactors,
+        correctLatex,
+        correctIndex: allOptions.indexOf(correctLatex),
+        options: allOptions,
+        hintText: generateScaffoldHint(N, trueFactors),
+        stepsText: buildDivisionStepsText(N, trueFactors)
+      };
+    }
+
+    /**************************************************************
+     * 3. 視覺特效：雷射光束、全螢幕 0.5 秒閃 3 下、花瓣雨
+     **************************************************************/
+    function triggerScreenFlash3x() {
+      const overlay = document.getElementById('screen-flash-overlay');
+      overlay.classList.remove('trigger-flash-3x');
+      // 強制 reflow 讓動畫可重複觸發
+      void overlay.offsetWidth;
+      overlay.classList.add('trigger-flash-3x');
+    }
+
+    function fireLaserBeam(attackerId, defenderId) {
+      const attackerEl = document.getElementById(`p${attackerId}-mascot-emoji`);
+      const defenderEl = document.getElementById(`p${defenderId}-mascot-emoji`);
+      const svgGroup = document.getElementById('laser-group');
+
+      if (!attackerEl || !defenderEl || !svgGroup) return;
+
+      const rectA = attackerEl.getBoundingClientRect();
+      const rectB = defenderEl.getBoundingClientRect();
+
+      const x1 = rectA.left + rectA.width / 2;
+      const y1 = rectA.top + rectA.height / 2;
+      const x2 = rectB.left + rectB.width / 2;
+      const y2 = rectB.top + rectB.height / 2;
+
+      const outerColor = attackerId === 1 ? '#3b82f6' : '#f43f5e';
+      const innerColor = '#fef08a';
+
+      const beamWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+      // 外層發光雷射
+      const outerLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      outerLine.setAttribute('x1', x1);
+      outerLine.setAttribute('y1', y1);
+      outerLine.setAttribute('x2', x2);
+      outerLine.setAttribute('y2', y2);
+      outerLine.setAttribute('stroke', outerColor);
+      outerLine.setAttribute('stroke-linecap', 'round');
+      outerLine.setAttribute('filter', 'url(#laser-glow)');
+      outerLine.classList.add('laser-beam-core');
+
+      // 內層高亮白黃光芯
+      const innerLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      innerLine.setAttribute('x1', x1);
+      innerLine.setAttribute('y1', y1);
+      innerLine.setAttribute('x2', x2);
+      innerLine.setAttribute('y2', y2);
+      innerLine.setAttribute('stroke', innerColor);
+      innerLine.setAttribute('stroke-width', '6');
+      innerLine.setAttribute('stroke-linecap', 'round');
+
+      // 命中爆炸光圈
+      const impactCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      impactCircle.setAttribute('cx', x2);
+      impactCircle.setAttribute('cy', y2);
+      impactCircle.setAttribute('r', '34');
+      impactCircle.setAttribute('fill', innerColor);
+      impactCircle.setAttribute('filter', 'url(#laser-glow)');
+
+      beamWrapper.appendChild(outerLine);
+      beamWrapper.appendChild(innerLine);
+      beamWrapper.appendChild(impactCircle);
+      svgGroup.appendChild(beamWrapper);
+
+      // 角色動作回饋
+      attackerEl.classList.remove('mascot-attack');
+      defenderEl.classList.remove('mascot-hit');
+      void attackerEl.offsetWidth;
+      void defenderEl.offsetWidth;
+      attackerEl.classList.add('mascot-attack');
+      defenderEl.classList.add('mascot-hit');
+
+      setTimeout(() => {
+        beamWrapper.remove();
+        attackerEl.classList.remove('mascot-attack');
+        defenderEl.classList.remove('mascot-hit');
+      }, 500);
+    }
+
+    // 在答對玩家的那一半螢幕降下花瓣雨
+    function spawnPetalRain(playerId) {
+      const container = document.getElementById(`p${playerId}-petals`);
+      if (!container) return;
+
+      const petalShapes = ['🌸', '🌺', '🌷', '💮', '✨'];
+      const count = 22;
+
+      for (let i = 0; i < count; i++) {
+        const petal = document.createElement('div');
+        petal.className = 'petal';
+        petal.textContent = petalShapes[Math.floor(Math.random() * petalShapes.length)];
+
+        const leftPercent = Math.random() * 92 + 4;
+        const sizeRem = (Math.random() * 0.85 + 1.05).toFixed(2);
+        const duration = (Math.random() * 0.7 + 1.35).toFixed(2);
+        const delay = (Math.random() * 0.35).toFixed(2);
+        const swayMid = `${(Math.random() * 60 - 30).toFixed(0)}px`;
+        const swayEnd = `${(Math.random() * 90 - 45).toFixed(0)}px`;
+
+        petal.style.left = `${leftPercent}%`;
+        petal.style.fontSize = `${sizeRem}rem`;
+        petal.style.setProperty('--fall-duration', `${duration}s`);
+        petal.style.setProperty('--sway-mid', swayMid);
+        petal.style.setProperty('--sway-end', swayEnd);
+        petal.style.animationDelay = `${delay}s`;
+
+        container.appendChild(petal);
+
+        setTimeout(() => {
+          petal.remove();
+        }, (parseFloat(duration) + parseFloat(delay)) * 1000 + 100);
+      }
+    }
+
+    /**************************************************************
+     * 4. 遊戲狀態管理與互動邏輯
+     **************************************************************/
+    const MAX_HP = 7;
+
+    const gameState = {
+      difficulty: 'easy',       // 'easy' | 'medium' | 'hard'
+      deviceMode: 'touchscreen', // 'touchscreen' | 'tablet'
+      isPlaying: false,
+      players: {
+        1: { hp: MAX_HP, correctCount: 0, wrongCount: 0, streak: 0, question: null, locked: false, mascot: null, drawing: false },
+        2: { hp: MAX_HP, correctCount: 0, wrongCount: 0, streak: 0, question: null, locked: false, mascot: null, drawing: false }
+      }
+    };
+
+    /**************************************************************
+     * 全螢幕自動控制與防跳出自動恢復模組
+     **************************************************************/
+    function isCurrentlyFullscreen() {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+    }
+
+    async function requestAppFullscreen() {
+      const docEl = document.documentElement;
+      try {
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+      } catch (err) {
+        // 部分瀏覽器或內嵌環境限制時靜默處理，並透過 100dvh 確保滿版
+      }
+      updateFullscreenUI();
+    }
+
+    async function toggleAppFullscreen() {
+      if (!isCurrentlyFullscreen()) {
+        await requestAppFullscreen();
+      } else {
+        try {
+          if (document.exitFullscreen) {
+            await document.exitFullscreen();
+          } else if (document.webkitExitFullscreen) {
+            await document.webkitExitFullscreen();
+          }
+        } catch (err) {}
+      }
+      updateFullscreenUI();
+    }
+
+    function updateFullscreenUI() {
+      const fsBtn = document.getElementById('btn-toggle-fullscreen');
+      const restoreBanner = document.getElementById('fullscreen-restore-banner');
+      const inFs = isCurrentlyFullscreen();
+
+      if (fsBtn) {
+        fsBtn.innerHTML = inFs
+          ? '<span>🗗</span> <span class="hidden sm:inline">退出全螢幕</span>'
+          : '<span>⛶</span> <span class="hidden sm:inline">全螢幕</span>';
+      }
+
+      // 若正在進行遊戲（特別是平板模式）卻意外跳出全螢幕，顯示醒目的一鍵恢復提示列
+      if (restoreBanner) {
+        const fsSupported = !!(
+          document.documentElement.requestFullscreen ||
+          document.documentElement.webkitRequestFullscreen
+        );
+        if (gameState.isPlaying && !inFs && fsSupported) {
+          restoreBanner.classList.remove('hidden');
+          restoreBanner.classList.add('flex');
+        } else {
+          restoreBanner.classList.add('hidden');
+          restoreBanner.classList.remove('flex');
+        }
+      }
+
+      // 全螢幕切換或旋轉後，延遲重新校正手寫白板尺寸與座標
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 150);
+    }
+
+    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(evt => {
+      document.addEventListener(evt, updateFullscreenUI);
+    });
+
+    // 初始化每位玩家的手寫短除法計算白板 (自動處理平板 90 度旋轉後的座標轉換與全螢幕縮放)
+    function setupPlayerScratchpad(playerId) {
+      const canvas = document.getElementById(`p${playerId}-scratchpad`);
+      const wrapper = document.getElementById(`p${playerId}-wrapper`);
+      const drawBtn = document.getElementById(`p${playerId}-btn-draw`);
+      const clearBtn = document.getElementById(`p${playerId}-btn-clear`);
+      const hintBtn = document.getElementById(`p${playerId}-btn-hint`);
+      const hintBox = document.getElementById(`p${playerId}-hint-box`);
+
+      if (!canvas || !wrapper || !drawBtn || !clearBtn || !hintBtn || !hintBox) return;
+
+      const ctx = canvas.getContext('2d');
+      let isDrawing = false;
+
+      // 調整畫布大小時自動保留既有手寫筆跡（避免切換全螢幕時筆跡消失或錯位）
+      function resizeCanvas() {
+        const targetW = wrapper.offsetWidth;
+        const targetH = wrapper.offsetHeight;
+        if (targetW === 0 || targetH === 0) return;
+        if (canvas.width === targetW && canvas.height === targetH) return;
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (canvas.width > 0 && canvas.height > 0) {
+          tempCtx.drawImage(canvas, 0, 0);
+        }
+
+        canvas.width = targetW;
+        canvas.height = targetH;
+
+        if (tempCanvas.width > 0 && tempCanvas.height > 0) {
+          ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, targetW, targetH);
+        }
+      }
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // 將螢幕絕對座標轉換為 wrapper 內部座標（相容順時鐘/逆時鐘 90 度旋轉與全螢幕動態縮放）
+      function getLocalCoords(e) {
+        const rect = wrapper.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+
+        let localX, localY;
+        if (gameState.deviceMode === 'tablet') {
+          // 平板旋轉 90 度後，視覺上的寬度 rect.width 對應 wrapper 的 offsetHeight，視覺高度 rect.height 對應 offsetWidth
+          const scaleX = wrapper.offsetWidth / (rect.height || 1);
+          const scaleY = wrapper.offsetHeight / (rect.width || 1);
+
+          if (playerId === 1) {
+            // 順時鐘 90 度逆矩陣轉換
+            localX = dy * scaleX + wrapper.offsetWidth / 2;
+            localY = -dx * scaleY + wrapper.offsetHeight / 2;
+          } else {
+            // 逆時鐘 90 度逆矩陣轉換
+            localX = -dy * scaleX + wrapper.offsetWidth / 2;
+            localY = dx * scaleY + wrapper.offsetHeight / 2;
+          }
+        } else {
+          const scaleX = wrapper.offsetWidth / (rect.width || 1);
+          const scaleY = wrapper.offsetHeight / (rect.height || 1);
+          localX = dx * scaleX + wrapper.offsetWidth / 2;
+          localY = dy * scaleY + wrapper.offsetHeight / 2;
+        }
+        return { x: localX, y: localY };
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!gameState.players[playerId].drawing) return;
+        isDrawing = true;
+        const pos = getLocalCoords(e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!isDrawing || !gameState.players[playerId].drawing) return;
+        const pos = getLocalCoords(e);
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = playerId === 1 ? '#1d4ed8' : '#be123c';
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      });
+
+      const stopDraw = () => { isDrawing = false; };
+      canvas.addEventListener('pointerup', stopDraw);
+      canvas.addEventListener('pointercancel', stopDraw);
+
+      // 切換手寫計算白板開關
+      drawBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizeCanvas();
+        const pState = gameState.players[playerId];
+        pState.drawing = !pState.drawing;
+        if (pState.drawing) {
+          canvas.classList.add('drawing-active');
+          drawBtn.textContent = '✅ 完成計算';
+          drawBtn.className = 'text-xs font-extrabold bg-emerald-500 text-white px-2 py-0.5 rounded-lg shadow transition';
+          clearBtn.classList.remove('hidden');
+        } else {
+          canvas.classList.remove('drawing-active');
+          drawBtn.textContent = '✏️ 手寫短除法';
+          drawBtn.className = 'text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2 py-0.5 rounded-lg transition';
+        }
+      });
+
+      // 清除筆跡按鈕
+      clearBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      });
+
+      // 顯示質因數判別提示按鈕
+      hintBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const q = gameState.players[playerId].question;
+        if (!q) return;
+        hintBox.textContent = q.hintText;
+        hintBox.classList.remove('hidden');
+      });
+    }
+
+    function clearPlayerScratchpad(playerId) {
+      const canvas = document.getElementById(`p${playerId}-scratchpad`);
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.classList.remove('drawing-active');
+      }
+      gameState.players[playerId].drawing = false;
+      const drawBtn = document.getElementById(`p${playerId}-btn-draw`);
+      const clearBtn = document.getElementById(`p${playerId}-btn-clear`);
+      const hintBox = document.getElementById(`p${playerId}-hint-box`);
+      if (drawBtn) {
+        drawBtn.textContent = '✏️ 手寫短除法';
+        drawBtn.className = 'text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2 py-0.5 rounded-lg transition';
+      }
+      if (clearBtn) clearBtn.classList.add('hidden');
+      if (hintBox) hintBox.classList.add('hidden');
+    }
+
+    // 隨機抽取兩隻不重複的小動物
+    function assignRandomMascots() {
+      const shuffled = [...MASCOT_POOL].sort(() => Math.random() - 0.5);
+      gameState.players[1].mascot = shuffled[0];
+      gameState.players[2].mascot = shuffled[1];
+
+      document.getElementById('p1-mascot-emoji').textContent = shuffled[0].emoji;
+      document.getElementById('p1-mascot-name').textContent = shuffled[0].name;
+
+      document.getElementById('p2-mascot-emoji').textContent = shuffled[1].emoji;
+      document.getElementById('p2-mascot-name').textContent = shuffled[1].name;
+    }
+
+    // 渲染玩家的 7 顆愛心血量
+    function renderHearts(playerId) {
+      const container = document.getElementById(`p${playerId}-hearts`);
+      const hp = gameState.players[playerId].hp;
+      container.innerHTML = '';
+
+      for (let i = 1; i <= MAX_HP; i++) {
+        const span = document.createElement('span');
+        if (i <= hp) {
+          span.textContent = '❤️';
+          span.className = 'transition-transform duration-200';
+        } else {
+          span.textContent = '🖤';
+          span.className = 'heart-lost';
+        }
+        container.appendChild(span);
+      }
+    }
+
+    // 為指定玩家出新題目並使用 MathJax 渲染
+    async function loadNewQuestionForPlayer(playerId) {
+      const pState = gameState.players[playerId];
+      const prevNum = pState.question ? pState.question.number : null;
+      const newQ = createQuestionObject(gameState.difficulty, prevNum);
+      pState.question = newQ;
+
+      // 換題時自動清空上一題的手寫草稿與提示
+      clearPlayerScratchpad(playerId);
+
+      const qMathEl = document.getElementById(`p${playerId}-question-math`);
+      const optionsContainer = document.getElementById(`p${playerId}-options`);
+      const buttons = optionsContainer.querySelectorAll('.option-btn');
+
+      qMathEl.innerHTML = `\\( ${newQ.number} \\)`;
+
+      const labels = ['A', 'B', 'C', 'D'];
+      buttons.forEach((btn, idx) => {
+        btn.disabled = false;
+        btn.classList.remove('ring-4', 'ring-emerald-400', 'bg-emerald-50', 'ring-rose-500', 'bg-rose-100');
+        btn.innerHTML = `
+          <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-black mr-1.5 shrink-0 ${
+            playerId === 1 ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'
+          }">${labels[idx]}</span>
+          <span class="math-opt">\\( ${newQ.options[idx]} \\)</span>
+        `;
+      });
+
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        try {
+          await window.MathJax.typesetPromise([qMathEl, optionsContainer]);
+        } catch (err) {
+          console.warn('MathJax typeset warning:', err);
+        }
+      }
+    }
+
+    // 處理玩家點擊選項
+    function handlePlayerAnswer(playerId, selectedIdx, btnElement) {
+      if (!gameState.isPlaying) return;
+      const player = gameState.players[playerId];
+      const opponentId = playerId === 1 ? 2 : 1;
+      const opponent = gameState.players[opponentId];
+
+      if (player.locked || !player.question) return;
+      player.locked = true;
+
+      const isCorrect = selectedIdx === player.question.correctIndex;
+
+      if (isCorrect) {
+        // 答對：累積連勝、播放慶祝與雷射音效、發射雷射、全螢幕 0.5 秒閃 3 下、降下花瓣雨、扣對手 1 滴血
+        player.correctCount++;
+        player.streak++;
+        opponent.hp = Math.max(0, opponent.hp - 1);
+
+        document.getElementById(`p${playerId}-score-badge`).textContent = `擊中：${player.correctCount} 次`;
+        const comboBadge = document.getElementById(`p${playerId}-combo-badge`);
+        if (player.streak >= 2) {
+          comboBadge.textContent = `🔥 連對 ${player.streak}`;
+          comboBadge.classList.remove('hidden');
+        }
+        // 連續答對 3 題且血量未滿時，獎勵回復 1 滴血（鼓勵深思熟慮提高準確率）
+        if (player.streak % 3 === 0 && player.hp < MAX_HP) {
+          player.hp++;
+          renderHearts(playerId);
+        }
+
+        btnElement.classList.add('ring-4', 'ring-emerald-400', 'bg-emerald-50');
+
+        sound.playCorrectAndLaser();
+        fireLaserBeam(playerId, opponentId);
+        triggerScreenFlash3x();
+        spawnPetalRain(playerId);
+        renderHearts(opponentId);
+
+        if (opponent.hp <= 0) {
+          endGame(playerId);
+          return;
+        }
+
+        setTimeout(() => {
+          if (!gameState.isPlaying) return;
+          loadNewQuestionForPlayer(playerId).then(() => {
+            player.locked = false;
+          });
+        }, 380);
+      } else {
+        // 答錯：中斷連勝、扣自己 1 滴血、彈出「迷思概念即時診斷與短除法步驟」並強制冷卻 2.5 秒防止盲猜
+        player.wrongCount++;
+        player.streak = 0;
+        player.hp = Math.max(0, player.hp - 1);
+        document.getElementById(`p${playerId}-combo-badge`).classList.add('hidden');
+
+        sound.playWrong();
+        renderHearts(playerId);
+
+        const halfSection = document.getElementById(`p${playerId}-half`);
+        halfSection.classList.remove('wrong-feedback');
+        void halfSection.offsetWidth;
+        halfSection.classList.add('wrong-feedback');
+        btnElement.classList.add('ring-4', 'ring-rose-500', 'bg-rose-100');
+
+        if (player.hp <= 0) {
+          endGame(opponentId);
+          return;
+        }
+
+        // 顯示迷思概念診斷視窗與 2.5 秒思考冷卻倒數
+        const q = player.question;
+        const chosenLatex = q.options[selectedIdx];
+        const diagModal = document.getElementById(`p${playerId}-diagnostic`);
+        const diagReason = document.getElementById(`p${playerId}-diag-reason`);
+        const diagSteps = document.getElementById(`p${playerId}-diag-steps`);
+        const penaltyBar = document.getElementById(`p${playerId}-penalty-bar`);
+
+        diagReason.textContent = diagnoseWrongOption(q.number, q.trueFactors, chosenLatex);
+        diagSteps.textContent = `${q.stepsText} ⇒ 標準分解式：${q.correctLatex.replace(/\\times/g, '×').replace(/\{|\}/g, '')}`;
+        diagModal.classList.remove('hidden');
+        penaltyBar.style.width = '100%';
+
+        const penaltyDuration = 2500;
+        const startTime = performance.now();
+        function animateCooldown(now) {
+          const elapsed = now - startTime;
+          const remainingRatio = Math.max(0, 1 - elapsed / penaltyDuration);
+          penaltyBar.style.width = `${remainingRatio * 100}%`;
+          if (elapsed < penaltyDuration && gameState.isPlaying) {
+            requestAnimationFrame(animateCooldown);
+          }
+        }
+        requestAnimationFrame(animateCooldown);
+
+        setTimeout(() => {
+          halfSection.classList.remove('wrong-feedback');
+          diagModal.classList.add('hidden');
+          if (!gameState.isPlaying) return;
+          loadNewQuestionForPlayer(playerId).then(() => {
+            player.locked = false;
+          });
+        }, penaltyDuration);
+      }
+    }
+
+    // 切換平板旋轉 90 度模式或正向觸屏模式
+    function applyDeviceLayoutMode() {
+      const board = document.getElementById('game-board');
+      if (gameState.deviceMode === 'tablet') {
+        board.classList.add('mode-tablet');
+      } else {
+        board.classList.remove('mode-tablet');
+      }
+
+      const diffNames = { easy: '簡單', medium: '中等', hard: '困難' };
+      const devNames = { touchscreen: '觸屏正向', tablet: '平板旋轉' };
+      document.getElementById('current-mode-badge').textContent =
+        `${diffNames[gameState.difficulty]}・${devNames[gameState.deviceMode]}`;
+    }
+
+    // 啟動新對局
+    async function startNewGame() {
+      sound.init();
+      // 點擊開始對戰或選擇平板模式時，自動觸發進入全螢幕
+      await requestAppFullscreen();
+      applyDeviceLayoutMode();
+      assignRandomMascots();
+
+      [1, 2].forEach(pid => {
+        gameState.players[pid].hp = MAX_HP;
+        gameState.players[pid].correctCount = 0;
+        gameState.players[pid].wrongCount = 0;
+        gameState.players[pid].streak = 0;
+        gameState.players[pid].locked = false;
+        document.getElementById(`p${pid}-score-badge`).textContent = '擊中：0 次';
+        document.getElementById(`p${pid}-combo-badge`).classList.add('hidden');
+        document.getElementById(`p${pid}-diagnostic`).classList.add('hidden');
+        document.getElementById(`p${pid}-petals`).innerHTML = '';
+        renderHearts(pid);
+      });
+
+      document.getElementById('start-modal').classList.add('hidden');
+      document.getElementById('gameover-modal').classList.add('hidden');
+      document.getElementById('gameover-modal').classList.remove('flex');
+
+      gameState.isPlaying = true;
+      await Promise.all([
+        loadNewQuestionForPlayer(1),
+        loadNewQuestionForPlayer(2)
+      ]);
+    }
+
+    // 結束遊戲並公布獲勝玩家
+    function endGame(winnerId) {
+      gameState.isPlaying = false;
+      const loserId = winnerId === 1 ? 2 : 1;
+      const winner = gameState.players[winnerId];
+
+      setTimeout(() => {
+        sound.playVictory();
+        spawnPetalRain(winnerId);
+
+        document.getElementById('winner-emoji').textContent = winner.mascot.emoji;
+        document.getElementById('winner-title').textContent =
+          `🎉 恭喜 玩家 ${winnerId} (${winner.mascot.name}) 獲勝！ 🎉`;
+        document.getElementById('winner-subtitle').textContent =
+          `成功把 玩家 ${loserId} 的 7 滴血全部扣光！`;
+
+        const p1 = gameState.players[1];
+        const p2 = gameState.players[2];
+        document.getElementById('stat-p1').textContent =
+          `答對 ${p1.correctCount} 題 / 答錯 ${p1.wrongCount} 題 (剩 ${p1.hp} ❤️)`;
+        document.getElementById('stat-p2').textContent =
+          `答對 ${p2.correctCount} 題 / 答錯 ${p2.wrongCount} 題 (剩 ${p2.hp} ❤️)`;
+
+        const modal = document.getElementById('gameover-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }, 450);
+    }
+
+    /**************************************************************
+     * 5. 事件綁定 (支援雙人同時多點觸控 pointerdown)
+     **************************************************************/
+    window.addEventListener('DOMContentLoaded', () => {
+      // 綁定兩位玩家的四選一按鈕 (使用 pointerdown 支援雙人同時零延遲點擊)
+      [1, 2].forEach(playerId => {
+        const container = document.getElementById(`p${playerId}-options`);
+        const buttons = container.querySelectorAll('.option-btn');
+        buttons.forEach(btn => {
+          btn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+            handlePlayerAnswer(playerId, idx, btn);
+          });
+        });
+      });
+
+      // 難度選擇按鈕切換
+      const diffButtons = document.querySelectorAll('.diff-btn');
+      diffButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          gameState.difficulty = btn.getAttribute('data-diff');
+          diffButtons.forEach(b => {
+            b.className = 'diff-btn py-3 px-2 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm sm:text-base hover:bg-slate-50 transition';
+          });
+          btn.className = 'diff-btn py-3 px-2 rounded-2xl border-2 border-indigo-600 bg-indigo-50 text-indigo-900 font-black text-sm sm:text-base shadow-sm transition';
+        });
+      });
+
+      // 裝置模式選擇按鈕切換
+      const deviceButtons = document.querySelectorAll('.device-btn');
+      deviceButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          gameState.deviceMode = btn.getAttribute('data-device');
+          deviceButtons.forEach(b => {
+            b.className = 'device-btn p-3 rounded-2xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm sm:text-base hover:bg-slate-50 transition flex flex-col items-center';
+          });
+          btn.className = 'device-btn p-3 rounded-2xl border-2 border-indigo-600 bg-indigo-50 text-indigo-900 font-black text-sm sm:text-base shadow-sm transition flex flex-col items-center';
+
+          // 當使用者點選「平板對戰模式」時，立即套用 90 度旋轉並自動請求進入全螢幕
+          applyDeviceLayoutMode();
+          if (gameState.deviceMode === 'tablet') {
+            requestAppFullscreen();
+          }
+        });
+      });
+
+      // 頂部手動全螢幕切換按鈕
+      const fsToggleBtn = document.getElementById('btn-toggle-fullscreen');
+      if (fsToggleBtn) {
+        fsToggleBtn.addEventListener('click', () => {
+          toggleAppFullscreen();
+        });
+      }
+
+      // 脫離全螢幕時的底部提示橫幅：點擊立即變回全螢幕
+      const restoreBanner = document.getElementById('fullscreen-restore-banner');
+      if (restoreBanner) {
+        restoreBanner.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          requestAppFullscreen();
+        });
+      }
+
+      // 若在「平板模式」對戰中意外跳出全螢幕，玩家下次觸碰畫面任意處時自動嘗試變回全螢幕
+      document.getElementById('game-board').addEventListener('pointerdown', () => {
+        if (gameState.isPlaying && gameState.deviceMode === 'tablet' && !isCurrentlyFullscreen()) {
+          requestAppFullscreen();
+        }
+      }, { passive: true });
+
+      // 開始對戰按鈕
+      document.getElementById('btn-start-game').addEventListener('click', () => {
+        startNewGame();
+      });
+
+      // 再玩一局按鈕
+      document.getElementById('btn-play-again').addEventListener('click', () => {
+        startNewGame();
+      });
+
+      // 更換設定按鈕
+      document.getElementById('btn-change-settings').addEventListener('click', () => {
+        document.getElementById('gameover-modal').classList.add('hidden');
+        document.getElementById('gameover-modal').classList.remove('flex');
+        document.getElementById('start-modal').classList.remove('hidden');
+      });
+
+      // 頂部返回設定按鈕
+      document.getElementById('btn-open-settings').addEventListener('click', () => {
+        gameState.isPlaying = false;
+        document.getElementById('start-modal').classList.remove('hidden');
+      });
+
+      // 音效開關按鈕
+      const soundBtn = document.getElementById('btn-toggle-sound');
+      soundBtn.addEventListener('click', () => {
+        sound.enabled = !sound.enabled;
+        soundBtn.textContent = sound.enabled ? '🔊' : '🔇';
+      });
+
+      // 初始化兩位玩家的手寫計算白板與提示工具
+      setupPlayerScratchpad(1);
+      setupPlayerScratchpad(2);
+
+      // 初始預渲染愛心與背景題目
+      renderHearts(1);
+      renderHearts(2);
+      loadNewQuestionForPlayer(1);
+      loadNewQuestionForPlayer(2);
+    });
+  </script>
+</body>
+</html>
